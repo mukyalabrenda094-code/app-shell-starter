@@ -1,22 +1,62 @@
-﻿import { ScrollView, View, Text, StyleSheet } from 'react-native';
-
-const FEED_ITEMS = [
-  { id: '1', title: 'Starter Feed Card', desc: 'Reusable shell ready for real app cards, feeds, or playlists.' },
-  { id: '2', title: 'Cross-Platform Layout', desc: 'Max-width container keeps wide desktop screens readable and phone screens clean.' },
-];
+﻿import { useCallback, useState } from 'react';
+import { ScrollView, View, Text, StyleSheet, RefreshControl } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/auth-context';
 
 export default function HomeTab() {
+  const { user, workspace } = useAuth();
+  const [savedCount, setSavedCount] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    if (!user) {
+      setSavedCount(0);
+      return;
+    }
+    const { count } = await supabase
+      .from('history_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+    setSavedCount(count ?? 0);
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [loadStats])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <View style={styles.inner}>
         <Text style={styles.heading}>Home</Text>
-        <Text style={styles.sub}>Your main hub or feed lives here.</Text>
-        {FEED_ITEMS.map((item) => (
-          <View key={item.id} style={styles.card}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardDesc}>{item.desc}</Text>
-          </View>
-        ))}
+        <Text style={styles.sub}>
+          {user ? `Signed in as ${user.email}` : 'Sign in on the Profile tab to sync cloud history.'}
+        </Text>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Active Workspace</Text>
+          <Text style={styles.cardDesc}>
+            {user ? workspace?.name ?? 'Personal Workspace' : 'Guest mode (no cloud workspace active)'}
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Cloud History Items</Text>
+          <Text style={styles.cardDesc}>
+            {user ? `${savedCount} saved item(s) synced in Supabase` : '0 synced items until you sign in'}
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
